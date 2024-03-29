@@ -26,4 +26,4 @@ The simulator is independent from the renderer, where the latter uses Unity's ac
 
 ## License
 
-Pending... (will update later)
+Do whatever you want with this.
