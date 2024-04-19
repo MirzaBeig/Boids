@@ -2,9 +2,6 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-using System.Threading.Tasks;
-using System.Collections.Concurrent;
-
 // An agent can be represented by it's position and velocity.
 
 // Fun fact 1: Boid is a portmanteau* of bird and '-oid' (as in, android).
@@ -30,6 +27,8 @@ public struct Boid
 
     public float wanderAngle;
 
+    public List<int> group;
+
     //public void AddForce(Vector2 force, float deltaTime)
     //{
     //    position += force * deltaTime;
@@ -50,6 +49,9 @@ public class Boids2D_Simulator : MonoBehaviour
     // Read-only (public get, private set).
 
     public List<Boid> boids { get; private set; }
+    public List<List<int>> boidGroups { get; private set; }
+
+    public bool enableGroups;
 
     [Header("Bounds")]
 
@@ -63,10 +65,6 @@ public class Boids2D_Simulator : MonoBehaviour
     [Space]
 
     public int typeCount = 1;
-
-    [Header("Spatial Partioning")]
-
-    public float cellSize = 2.0f;
 
     [Header("Speed")]
 
@@ -88,6 +86,11 @@ public class Boids2D_Simulator : MonoBehaviour
     public float cohesionForce = 1.0f;
     public float separationForce = 1.0f;
     public float alignmentForce = 1.0f;
+
+    [Space]
+
+    public float typeSeparationForce = 1.0f;
+    public float typeSeparationRadiusScale = 2.0f;
 
     [Header("Wander")]
 
@@ -124,6 +127,7 @@ public class Boids2D_Simulator : MonoBehaviour
     void Awake()
     {
         boids = new();
+        boidGroups = new();
     }
 
     void Start()
@@ -204,22 +208,6 @@ public class Boids2D_Simulator : MonoBehaviour
         return offsetToTarget;
     }
 
-    //bool IsWithinBounds(Vector2 position, Vector2 origin, Vector2 extents)
-    //{
-    //    Vector2 lowerBound = origin - extents;
-    //    Vector2 upperBound = origin + extents;
-
-    //    for (int i = 0; i < 2; ++i)
-    //    {
-    //        if (position[i] < lowerBound[i] || position[i] > upperBound[i])
-    //        {
-    //            return false;
-    //        }
-    //    }
-
-    //    return true;
-    //}
-
     Vector2 GetBoundingForce(Vector2 position, Vector2 origin, Vector2 extents, float forceScale)
     {
         Vector2 lowerBound = origin - extents;
@@ -241,11 +229,6 @@ public class Boids2D_Simulator : MonoBehaviour
 
         return force;
     }
-
-    //Vector2Int GetCellPosition(Vector2 position)
-    //{
-    //    return new Vector2Int((int)(position.x / cellSize), (int)(position.y / cellSize));
-    //}
 
     void Update()
     {
@@ -276,6 +259,21 @@ public class Boids2D_Simulator : MonoBehaviour
         Color wanderDebugColour = Color.cyan;
         wanderDebugColour.a = debugColour.a;
 
+        // Clear.
+
+        boidGroups.Clear();
+
+        for (int i = 0; i < boidCount; i++)
+        {
+            Boid boid = boids[i];
+
+            boid.group = null;
+
+            boids[i] = boid;
+        }
+
+        float typeSeparationRadius = typeSeparationRadiusScale * separationRadius;
+        
         for (int i = 0; i < boidCount; i++)
         {
             Boid boid = boids[i];
@@ -298,6 +296,7 @@ public class Boids2D_Simulator : MonoBehaviour
             uint otherBoidsInAlignmentRadius = 0;
 
             Vector2 separation = Vector2.zero;
+            Vector2 typeSeparation = Vector2.zero;
 
             for (int j = 0; j < boidCount; j++)
             {
@@ -315,6 +314,8 @@ public class Boids2D_Simulator : MonoBehaviour
 
                 Vector2 directionToOtherBoid = offsetToOtherBoid / distanceToOtherBoid;
 
+                bool sameTypeAsOtherBoid = boid.type == otherBoid.type;
+
                 // Separation.
 
                 if (distanceToOtherBoid < separationRadius)
@@ -322,12 +323,25 @@ public class Boids2D_Simulator : MonoBehaviour
                     // Inverse normalized distance (closer = stronger force).
 
                     float inverseNormalizedDistance = 1.0f - (distanceToOtherBoid / separationRadius);
+
                     separation -= directionToOtherBoid * inverseNormalizedDistance;
+                }
+
+                // Type separation.
+
+                if (!sameTypeAsOtherBoid)
+                {
+                    if (distanceToOtherBoid < typeSeparationRadius)
+                    {
+                        float inverseNormalizedDistance = 1.0f - (distanceToOtherBoid / typeSeparationRadius);
+
+                        typeSeparation -= directionToOtherBoid * inverseNormalizedDistance;
+                    }
                 }
 
                 // Only apply cohesion and alignment if same type.
 
-                if (boid.type == otherBoid.type)
+                else
                 {
                     // Cohesion.
 
@@ -335,6 +349,12 @@ public class Boids2D_Simulator : MonoBehaviour
                     {
                         otherBoidsInCohesionRadius++;
                         averagePositionForCohesion += otherBoid.position;
+
+                        if (boid.group == null && otherBoid.group != null)
+                        {
+                            otherBoid.group.Add(i);
+                            boid.group = otherBoid.group;
+                        }
                     }
 
                     // Alignment.
@@ -347,9 +367,23 @@ public class Boids2D_Simulator : MonoBehaviour
                 }
             }
 
+            // If still no group, create one.
+
+            if (enableGroups)
+            {
+                if (boid.group == null)
+                {
+                    boid.group = new();
+                    boid.group.Add(i);
+
+                    boidGroups.Add(boid.group);
+                }
+            }
+
             // Separation.
 
             force += separation * separationForce;
+            force += typeSeparation * typeSeparationForce;
 
             // Cohesion.
 

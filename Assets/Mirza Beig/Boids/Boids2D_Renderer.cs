@@ -16,6 +16,11 @@ public class Boids2D_Renderer : MonoBehaviour
 
     [Space]
 
+    public bool quantizePosition;
+    public float quantizePositionSteps = 128.0f;
+
+    [Space]
+
     [Range(0.0f, 1.0f)]
     public float typeColourBlending = 0.2f;
 
@@ -31,6 +36,17 @@ public class Boids2D_Renderer : MonoBehaviour
     {
         simulator = GetComponent<Boids2D_Simulator>();
     }
+
+    // Implement vector quantization.
+
+    Vector2 Quantize(Vector2 v, float steps)
+    {
+        v.x = Mathf.Round(v.x * steps) / steps;
+        v.y = Mathf.Round(v.y * steps) / steps;
+
+        return v;
+    }
+
 
     void Update()
     {
@@ -83,6 +99,13 @@ public class Boids2D_Renderer : MonoBehaviour
             particle.position += particle.velocity * deltaTime;
             particle.position = Vector2.Lerp(particle.position, boid.position, deltaTime * positionLerpSpeed);
 
+            // Quantize position to some cell size.
+
+            if (quantizePosition)
+            {
+                particle.position = Quantize(particle.position, quantizePositionSteps);
+            }
+
             particle.startSize = particleSystemStartSize;
 
             particle.startLifetime = 1.0f;
@@ -97,6 +120,37 @@ public class Boids2D_Renderer : MonoBehaviour
             particle.remainingLifetime = 1.0f;
 
             particles[i] = particle;
+        }
+
+        for (int i = 0; i < simulator.boidGroups.Count; i++)
+        {
+            List<int> boidGroup = simulator.boidGroups[i];
+
+            Vector2 boidGroupCenter = Vector2.zero;
+
+            for (int j = 0; j < boidGroup.Count; j++)
+            {
+                Boid boid = simulator.boids[boidGroup[j]];
+
+                boidGroupCenter += boid.position;
+            }
+
+            boidGroupCenter /= boidGroup.Count;
+            Boid? farthestBoidFromCenter = null;
+
+            for (int j = 0; j < boidGroup.Count; j++)
+            {
+                Boid boid = simulator.boids[boidGroup[j]];
+
+                if (farthestBoidFromCenter == null || Vector2.Distance(boid.position, boidGroupCenter) > Vector2.Distance(farthestBoidFromCenter.Value.position, boidGroupCenter))
+                {
+                    farthestBoidFromCenter = boid;
+                }
+            }
+
+            float boidGroupRadius = Vector2.Distance(farthestBoidFromCenter.Value.position, boidGroupCenter);
+
+            Debug.DrawRay(boidGroupCenter, Vector2.up * boidGroupRadius, Color.red);
         }
 
         particleSystem.SetParticles(particles, boidCount);

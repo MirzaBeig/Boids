@@ -2,13 +2,9 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class GameManager : MonoBehaviour
+public class SetResolutionOnStart : MonoBehaviour
 {
     public Vector2Int startResolution = new(1920, 1080);
-
-    [Space]
-
-    public int boindsOnStart = 100;
 
     void Start()
     {
@@ -18,8 +14,6 @@ public class GameManager : MonoBehaviour
         {
             Screen.SetResolution(startResolution.x, startResolution.y, false);
         }
-
-        FindAnyObjectByType<Boids2D_Simulator>().AddBoids(boindsOnStart);
     }
 
     void Update()
